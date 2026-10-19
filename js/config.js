@@ -7,7 +7,7 @@ window.BARBEARIA={
   slogan:'Moderno é ser clássico',
   endereco:'Rua Joaquim Manuel de Macêdo, 2098, João XXIII',
   cidade:'Fortaleza',
-  instagram:'',              // seu @ de desenvolvedor, sem o @
+  instagram:'medeiroz_dev',  // por enquanto, o Instagram do desenvolvedor. Sem o @
   whatsapp:'(85) 99634-4457',        // recebe os agendamentos
   pix:'',                    // chave Pix de verdade. Vazio mostra um Pix de teste
   cor:'#E0C48A',             // dourado da tabela de valores
