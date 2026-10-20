@@ -1,5 +1,5 @@
 /* Guarda uma cópia das páginas para o app abrir mesmo sem internet. Busca sempre a versão nova primeiro. */
-var CACHE='barbearia-v1';
+var CACHE='barbearia-v3';
 self.addEventListener('install',function(){self.skipWaiting()});
 self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim())});
 self.addEventListener('fetch',function(e){
