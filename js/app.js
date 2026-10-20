@@ -3,6 +3,8 @@
 
 /* Duas páginas usam este arquivo: index.html (cliente) e painel/index.html (barbeiro, com senha). */
 var PAGE=document.body.getAttribute('data-page')||'cliente';
+/* Se o servidor entregar a página do cliente no endereço /painel, o site se ajusta sozinho e abre o painel. */
+if(PAGE==='cliente'&&/\/painel\/?$/.test(location.pathname)){PAGE='painel';document.body.setAttribute('data-page','painel');document.body.classList.add('no-nav');var nv=document.querySelector('nav.nav');if(nv)nv.style.display='none'}
 /* DBON: com o banco ligado (js/db.js + chaves em js/config.js) os dados vêm e vão para o Supabase. Sem isso, é a demonstração local. */
 var DBON=!!(window.DB&&window.DB.on);
 var KEY=DBON?'barbearia-dados-v1':'barbearia-demo-v7',LINKKEY='barbearia-link',LOCKKEY='barbearia-painel';
@@ -327,7 +329,7 @@ function vAgendar(){
        '<label class="field"><span>WhatsApp com DDD</span><input type="tel" inputmode="tel" id="f-phone" autocomplete="tel" placeholder="(00) 00000-0000" value="'+esc(ui.phone)+'"></label>'+
        (sv.preco?'<h3 class="grp">Como quer pagar?</h3>'+payChips():'')+
        '<p class="notice">Você pode cancelar ou remarcar até 2 horas antes, em "Meu horário". Depois disso, só falando com a barbearia.</p>'+
-       '<p class="hint">'+(ui.pay==='pix'&&sv.preco?'Ao confirmar, aparece o Pix para pagar.':'Ao confirmar, o WhatsApp abre com a mensagem pronta para a barbearia.')+'</p></section>';
+       '<p class="hint">'+(ui.pay==='pix'&&sv.preco?'Ao confirmar, aparece o Pix para pagar.':(DBON?'Ao confirmar, seu horário fica reservado na hora.':'Ao confirmar, o WhatsApp abre com a mensagem pronta para a barbearia.'))+'</p></section>';
   }
   return h;
 }
@@ -368,11 +370,11 @@ function ticketTop(b,sv){
 function vEnviado(){
   var b=mine();
   if(!b){ui.tab='meu';return vMeu()}
-  return '<div class="okhead"><span class="check">'+CHECK+'</span><h2 class="h">Horário reservado</h2><p class="lead" style="margin:0">Agora é só mandar a mensagem para a barbearia.</p></div>'+
+  return '<div class="okhead"><span class="check">'+CHECK+'</span><h2 class="h">Horário reservado</h2><p class="lead" style="margin:0">'+(DBON?'Seu horário está garantido. A barbearia confirma em breve.':'Agora é só mandar a mensagem para a barbearia.')+'</p></div>'+
     '<div class="ticket">'+ticketTop(b,svcById(b.svc))+'</div>'+
-    '<div class="stack"><a class="btn block" target="_blank" rel="noopener" href="'+esc(waLink(S.zap,bookMsg(b)))+'">Enviar no WhatsApp</a>'+
+    '<div class="stack"><a class="btn block" target="_blank" rel="noopener" href="'+esc(waLink(S.zap,bookMsg(b)))+'">'+(DBON?'Avisar a barbearia no WhatsApp (opcional)':'Enviar no WhatsApp')+'</a>'+
     '<button class="btn ghost block" data-act="go" data-v="meu">Ver meu horário</button></div>'+
-    '<p class="hint">Se o WhatsApp não abriu sozinho, toque em "Enviar no WhatsApp".</p>';
+    (DBON?'':'<p class="hint">Se o WhatsApp não abriu sozinho, toque em "Enviar no WhatsApp".</p>');
 }
 function vPix(){
   var b=mine();
@@ -749,7 +751,7 @@ function afterBook(b){
   ui.slot=null;ui.svc=null;ui.step=1;ui.sheet=false;
   if(b.pay==='pix'){save();ui.tab='pix';render(false);return}
   b.sent=true;save();ui.tab='enviado';render(false);
-  window.open(waLink(S.zap,bookMsg(b)),'_blank','noopener');
+  if(!DBON)window.open(waLink(S.zap,bookMsg(b)),'_blank','noopener');
 }
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act],[data-tab]');
