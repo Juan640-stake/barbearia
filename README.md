@@ -7,7 +7,8 @@ Não precisa instalar nada: são só arquivos HTML, CSS e JavaScript.
 ```
 index.html            página do cliente
 painel/index.html     painel do barbeiro (endereço /painel, com senha)
-js/config.js          dados da barbearia: nome, endereço, serviços, preços, barbeiros, fotos, senha
+js/config.js          dados da barbearia: nome, endereço, serviços, preços, barbeiros, fotos, senha, chaves do banco
+js/db.js              ligação com o banco (Supabase)
 js/app.js             funcionamento
 css/style.css         visual
 manifest.webmanifest  instalar como aplicativo no celular
@@ -49,8 +50,45 @@ Fica em `/painel` e não aparece no menu do cliente. A senha está no `js/config
 2. Na Vercel, clique em **Add New → Project** e escolha o repositório.
 3. Deixe tudo como está (sem comando de build, sem pasta de saída) e clique em **Deploy**.
 
+## Banco de dados (Supabase)
+
+Com o banco ligado, o cliente marca no celular dele e o barbeiro vê na hora no painel. Sem ele, o site funciona como demonstração, guardando tudo só no aparelho.
+
+```
+supabase/migracao.sql  ajusta o banco que já existe (rodar uma vez no Supabase; pode rodar de novo)
+js/db.js               toda a conversa do site com o banco
+js/vendor/supabase.js  biblioteca do Supabase (cópia local, sem depender de CDN)
+```
+
+O `supabase/schema.sql` é de uma versão antiga e não deve ser usado.
+
+A migração usa as tabelas que já existem (`clientes`, `barbeiros`, `servicos`, `agendamentos`) e só acrescenta o que falta. Ela não apaga dados.
+
+Para ligar:
+
+1. No Supabase, abra **SQL Editor**, cole o `supabase/migracao.sql` e clique em **Run**.
+2. Defina a senha do painel (8 letras ou mais, é ela que protege os dados dos clientes):
+   `update public.config set senha_painel = 'SUA-SENHA' where id = 1;`
+3. Em **Project Settings > API**, copie a **Project URL** e a chave **anon** (ou **publishable**) e cole em `js/config.js`, no bloco `window.SUPABASE`. Nunca use a `service_role`.
+4. Suba para o GitHub. A Vercel publica sozinha.
+
+Pontos de atenção:
+
+- **Nomes iguais:** o site e o banco se encontram pelo nome. Os serviços de `js/config.js` precisam ter o mesmo nome dos da tabela `servicos` (maiúsculas e acentos não importam), e o mesmo vale para os barbeiros. Se as tabelas estiverem vazias, a migração cria 1 barbeiro e os 9 serviços do `js/config.js`.
+- **Tabelas trancadas:** a migração apaga as regras de acesso antigas dessas tabelas e fecha o acesso direto. O site só conversa com o banco por funções, então ninguém lê nome ou telefone de cliente sem estar logado como barbeiro.
+- **Expediente:** a tabela `expediente` não é usada. Os horários de funcionamento (seg a sex 9h às 19h, sábado até 16h, almoço 12h às 13h, domingo fechado) estão em dois lugares: `nSlots()` no `js/app.js` e `slots_do_dia()` no `supabase/migracao.sql`. Se mudar um, mude o outro.
+
+O que cada pessoa consegue fazer:
+
+- **Cliente (sem login):** ver quais horários estão ocupados, agendar, consultar e cancelar os horários do próprio WhatsApp (até 2 horas antes) e avisar que fez o Pix. Não vê nome nem telefone de ninguém.
+- **Barbeiro (senha em `/painel`):** vê a agenda e os clientes, confirma, dá baixa no pagamento, cancela, bloqueia horários e ajusta WhatsApp, Pix e preços.
+
+O servidor também impede dois clientes no mesmo horário com o mesmo barbeiro, agendamento em domingo, almoço ou dia que já passou, e mais de 3 horários futuros por telefone.
+
 ## Limitações atuais
 
-- Os agendamentos ficam salvos só no aparelho de quem abre. Para o barbeiro ver no painel o que os clientes marcam nos celulares deles, falta um servidor (por exemplo, Supabase).
+- A tela se atualiza a cada 30 segundos e quando a pessoa volta para o app. Não é em tempo real.
 - Lembretes e confirmações abrem o WhatsApp com a mensagem pronta, mas o envio é manual.
-- A senha do painel fica no próprio código: serve para afastar curiosos, não é segurança de verdade.
+- Quem souber o WhatsApp de um cliente consegue consultar e cancelar o horário dele. Para uma barbearia pequena isso é aceitável; para mais proteção, o próximo passo seria um código enviado por mensagem.
+- Os preços não ficam gravados em cada agendamento: mudar o preço de um serviço muda o valor mostrado nos agendamentos antigos.
+- Sem as chaves em `js/config.js`, os agendamentos ficam salvos só no aparelho de quem abre, e a senha do painel (`senha` no `js/config.js`) serve só para afastar curiosos.

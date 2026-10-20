@@ -2,6 +2,14 @@
    Para mostrar a outro barbeiro sem mexer neste arquivo, use o link:
    ?nome=...&end=...&cidade=...&insta=...&zap=...&pix=...&cor=...&logo=...&barbeiros=Zé,Carlos&demo=1
    O que vier pelo link fica salvo no aparelho, então o app instalado na tela inicial abre já personalizado. */
+/* Banco de dados (Supabase). Cole aqui a URL do projeto e a chave pública (anon ou publishable).
+   Essas duas podem ficar no site. NUNCA coloque a chave service_role aqui.
+   Vazio = modo demonstração, com tudo guardado só no aparelho. */
+window.SUPABASE={
+  url:'https://fdjbugicpxlcpemilosd.supabase.co',   // ex.: 'https://abcdefghij.supabase.co'
+  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkamJ1Z2ljcHhsY3BlbWlsb3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1MTE1NTEsImV4cCI6MjEwODA4NzU1MX0.zqagLeUMwq0ruim-FbMGoW0ohau4Qm2bM2HLFHHsCsg'    // ex.: 'eyJhbGciOi...' ou 'sb_publishable_...'
+};
+
 window.BARBEARIA={
   nome:'Barber Club',
   slogan:'Moderno é ser clássico',

@@ -1,0 +1,2 @@
+-- OBSOLETO. Não use este arquivo.
+-- O banco é ajustado pelo supabase/migracao.sql (usa as tabelas que você já criou).

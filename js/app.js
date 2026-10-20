@@ -3,7 +3,9 @@
 
 /* Duas páginas usam este arquivo: index.html (cliente) e painel/index.html (barbeiro, com senha). */
 var PAGE=document.body.getAttribute('data-page')||'cliente';
-var KEY='barbearia-demo-v7',LINKKEY='barbearia-link',LOCKKEY='barbearia-painel';
+/* DBON: com o banco ligado (js/db.js + chaves em js/config.js) os dados vêm e vão para o Supabase. Sem isso, é a demonstração local. */
+var DBON=!!(window.DB&&window.DB.on);
+var KEY=DBON?'barbearia-dados-v1':'barbearia-demo-v7',LINKKEY='barbearia-link',LOCKKEY='barbearia-painel';
 var DIAS=['dom','seg','ter','qua','qui','sex','sáb'];
 var DIAS_LONGOS=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 var STATUS={pendente:['p-await','Aguardando confirmação'],confirmado:['p-paid','Confirmado']};
@@ -146,24 +148,30 @@ function seed(){
   add(3,2,0,9,'pendente',0);
   return {day:ymd(t),bookings:list,blocks:{},zap:CFG.whatsapp,pix:CFG.pix||PIXTESTE,prices:{},mine:null,profile:{name:'',phone:''}};
 }
+function blank(){return {day:ymd(today()),bookings:[],blocks:{},zap:CFG.whatsapp,pix:CFG.pix||PIXTESTE,prices:{},mine:null,profile:{name:'',phone:''}}}
 function load(){
   try{
     var r=localStorage.getItem(KEY);
-    if(r){var s=JSON.parse(r);if(s&&s.bookings&&s.day===ymd(today()))return s}
+    if(r){
+      var s=JSON.parse(r);
+      /* com o banco, o aparelho guarda só quem é o cliente (WhatsApp). A agenda vem do servidor. */
+      if(DBON){var b0=blank();b0.me=s.me||null;b0.profile=s.profile||b0.profile;return b0}
+      if(s&&s.bookings&&s.day===ymd(today()))return s;
+    }
   }catch(e){}
-  return seed();
+  return DBON?blank():seed();
 }
 var S=load();
 S.prices=S.prices||{};
 if(!S.me&&S.profile&&S.profile.phone)S.me=S.profile.phone;
 S.bookings.forEach(function(b){if(PROS.indexOf(b.pro)<0)b.pro=PROS[0]});
 S.pix=S.pix||CFG.pix||PIXTESTE;
-try{
+if(!DBON)try{
   var q0=new URLSearchParams(location.search);
   if(q0.get('zap'))S.zap=CFG.whatsapp;
   if(q0.get('pix'))S.pix=CFG.pix;
 }catch(e){}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DBON?{me:S.me,profile:S.profile}:S))}catch(e){}}
 
 function svcs(){return CFG.servicos.map(function(s){var o=S.prices[s.id];return Object.assign({},s,{preco:typeof o==='number'?o:(s.preco||0)})})}
 function svcById(id){var l=svcs();return l.filter(function(s){return s.id===id})[0]||l[0]}
@@ -214,7 +222,8 @@ function firstOpen(){
 function isUnlocked(){try{return sessionStorage.getItem(LOCKKEY)==='1'}catch(e){return false}}
 
 var ui={tab:'agendar',step:1,svc:null,pro:MULTI?'*':PROS[0],date:firstOpenFree(),slot:null,name:S.profile.name||'',phone:S.profile.phone||'',
-        pay:'local',sheet:false,bdate:firstOpen(),bpro:PROS[0],ptab:'agenda',lookup:'',lookupMiss:false,confirm:null,askReset:false,setOpen:false,unlocked:isUnlocked()};
+        pay:'local',sheet:false,bdate:firstOpen(),bpro:PROS[0],ptab:'agenda',lookup:'',lookupMiss:false,confirm:null,askReset:false,setOpen:false,unlocked:DBON?false:isUnlocked(),
+        loaded:!DBON,loadErr:false,busy:false,booting:DBON&&PAGE==='painel',email:'',pass:'',loginErr:''};
 
 /* ---------- peças de tela ---------- */
 function dayChips(sel,act){
@@ -294,6 +303,10 @@ function vAgendar(){
     h+='<section class="sec"><h2 class="h">Escolha o dia e o horário</h2><p class="lead">'+esc(sv.nome)+', '+sv.min+' min.</p>';
     if(MULTI)h+='<h3 class="grp" style="margin-top:0">Com quem?</h3>'+chips('pro',[['*','Sem preferência']].concat(PROS.map(function(p){return [p,p]})),ui.pro);
     h+=dayChips(ui.date,'date');
+    if(DBON&&!ui.loaded){
+      return h+'<p class="hint">'+(ui.loadErr?'Não foi possível carregar os horários. Confira a internet.':'Carregando horários...')+'</p>'+
+             (ui.loadErr?'<div class="actions"><button class="btn ghost" data-act="retry">Tentar de novo</button></div>':'')+'</section>';
+    }
     var m=dayMap(ui.date,PROS[0]),n=len(sv),free=0,out='';
     [['Manhã',0,6],['Tarde',8,20]].forEach(function(g){
       var btns='';
@@ -455,6 +468,12 @@ function vLock(){
          '<input type="password" inputmode="numeric" id="pin" maxlength="'+String(CFG.senha).length+'" autocomplete="off" aria-label="Senha" placeholder="••••">'+
          (CFG.demo?'<p class="hint">Na demonstração, a senha é '+esc(CFG.senha)+'.</p>':'')+'</section>';
 }
+function vLogin(){
+  return '<section class="sec login"><h2 class="h">Área do barbeiro</h2><p class="lead">Digite a senha para ver a agenda.</p>'+
+         '<label class="field"><span>Senha</span><input type="password" id="adm-pass" autocomplete="off" value="'+esc(ui.pass)+'"></label>'+
+         (ui.loginErr?'<p class="notice warn">'+esc(ui.loginErr)+'</p>':'')+
+         '<div class="stack" style="margin-top:16px"><button class="btn block" data-act="login"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'Entrando...':'Entrar')+'</button></div></section>';
+}
 function vAgenda(){
   var ds=ui.bdate,pro=ui.bpro,m=dayMap(ds,pro);
   var wk=0,wkv=0,t0=ymd(today()),t7=ymd(addDays(today(),7));
@@ -538,7 +557,10 @@ function vClientes(){
   return h+(list.length?'':'<div class="empty">Nenhum cliente ainda.</div>')+'</div>';
 }
 function vPainel(){
-  if(!ui.unlocked)return vLock();
+  if(DBON){
+    if(ui.booting)return '<p class="hint" style="text-align:center;margin-top:40px">Carregando...</p>';
+    if(!ui.unlocked)return vLogin();
+  }else if(!ui.unlocked)return vLock();
   var h='<section class="sec"><h2 class="h">Painel</h2>'+
     chips('ptab',[['agenda','Agenda'],['clientes','Clientes']],ui.ptab)+
     (ui.ptab==='clientes'?vClientes():vAgenda())+'</section>';
@@ -553,7 +575,9 @@ function vPainel(){
   h+='</div><div class="keyrow"><div><small>Link para os clientes</small><b>'+esc(clientUrl())+'</b></div><button class="btn sm" data-act="copy" data-text="'+esc(clientUrl())+'">Copiar</button></div></details>';
 
   h+='<div class="reset">';
-  if(ui.askReset){
+  if(DBON){
+    /* com o banco ligado não existe "voltar aos exemplos" */
+  }else if(ui.askReset){
     h+='<h3 class="sub-h">Voltar aos exemplos?</h3><p class="muted" style="margin:0">Apaga o que foi marcado e traz os clientes de exemplo de novo.</p>'+
        '<div class="actions"><button class="btn danger" data-act="rdo">Sim, apagar</button><button class="btn ghost" data-act="rno">Voltar</button></div>';
   }else{
@@ -653,14 +677,75 @@ document.addEventListener('wheel',function(e){
 },{passive:false});
 document.addEventListener('scroll',function(e){if(e.target.classList&&e.target.classList.contains('days'))edge(e.target)},true);
 
+/* ---------- banco de dados ---------- */
+var ERR={
+  horario_ocupado:'Esse horário acabou de ser ocupado. Escolha outro.',
+  horario_invalido:'Esse horário não está disponível. Escolha outro.',
+  limite_por_telefone:'Esse número já tem 3 horários marcados.',
+  dados_invalidos:'Confira o nome e o WhatsApp.',
+  servico_invalido:'Esse serviço não está disponível agora.',
+  barbeiro_invalido:'Esse barbeiro não está disponível agora.',
+  nao_encontrado:'Não encontramos esse horário.',
+  prazo_encerrado:'Faltam menos de 2 horas. Fale com a barbearia.'
+};
+function errMsg(e){return ERR[e&&e.code]||'Não deu certo. Confira a internet e tente de novo.'}
+function typing(){var a=document.activeElement;return !!(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))}
+function applyData(d){
+  S.bookings=d.bookings;
+  S.bookings.forEach(function(b){if(PROS.indexOf(b.pro)<0)b.pro=PROS[0]});
+  /* bloqueios chegam como lista. O barbeiro do banco vira o barbeiro do site (ou o primeiro, se o site não tiver nomes) */
+  S.blocks={};
+  d.blocks.forEach(function(r){
+    var p=PROS.indexOf(r.barbeiro)<0?PROS[0]:r.barbeiro,k=p+'|'+r.data;
+    (S.blocks[k]=S.blocks[k]||[]).push(r.slot);
+  });
+  if(d.cfg.zap)S.zap=d.cfg.zap;
+  if(d.cfg.pix){S.pix=d.cfg.pix;S.pixEdited=true}
+  S.prices=d.cfg.prices||{};
+  ui.loaded=true;ui.loadErr=false;
+}
+/* busca os dados no servidor e desenha de novo. quiet: não mexe na tela se a pessoa estiver digitando */
+function refresh(opts){
+  if(!DBON)return Promise.resolve();
+  var job;
+  if(PAGE==='painel'){
+    if(!ui.unlocked)return Promise.resolve();
+    job=DB.loadAdmin(ymd(addDays(today(),-120)));
+  }else job=DB.loadPublic(S.me);
+  return job.then(applyData).catch(function(){if(!ui.loaded)ui.loadErr=true}).then(function(){
+    if(opts&&opts.quiet&&typing())return;
+    render();
+  });
+}
+function fail(msg){toast(msg||'Não salvou. Confira a internet.');refresh()}
+var cfgT;
+function saveCfg(){
+  if(!DBON||PAGE!=='painel')return;
+  clearTimeout(cfgT);
+  cfgT=setTimeout(function(){
+    DB.saveConfig({zap:S.zap,pix:pixTest()?'':S.pix,prices:S.prices}).catch(function(){toast('Não salvou as configurações. Confira a internet.')});
+  },700);
+}
+
 /* ---------- ações ---------- */
 function book(){
-  var sv=svcById(ui.svc);if(!sv||ui.slot==null)return;
+  var sv=svcById(ui.svc);if(!sv||ui.slot==null||ui.busy)return;
   var pro=freePro(ui.date,ui.slot,len(sv),ui.pro);
   if(pro==null){toast('Esse horário acabou de ser ocupado');ui.slot=null;ui.step=2;render(false);return}
   var b={id:'b'+Date.now(),date:ui.date,start:ui.slot,slots:len(sv),svc:sv.id,pro:pro,name:ui.name.trim(),phone:ui.phone.trim(),status:'pendente',
          pay:sv.preco?ui.pay:'local',paid:'',sent:false};
-  S.bookings.push(b);S.mine=b.id;S.me=ui.phone.trim();S.profile={name:ui.name.trim(),phone:ui.phone.trim()};
+  if(!DBON){afterBook(b);return}
+  ui.busy=true;toast('Reservando...');
+  DB.agendar(b).then(function(row){
+    b.id=row.id;b.status=row.status;ui.busy=false;afterBook(b);
+  }).catch(function(e){
+    ui.busy=false;toast(errMsg(e));
+    if(e&&(e.code==='horario_ocupado'||e.code==='horario_invalido')){ui.slot=null;ui.step=2}
+    refresh();
+  });
+}
+function afterBook(b){
+  S.bookings.push(b);S.mine=b.id;S.me=b.phone;S.profile={name:b.name,phone:b.phone};
   ui.slot=null;ui.svc=null;ui.step=1;ui.sheet=false;
   if(b.pay==='pix'){save();ui.tab='pix';render(false);return}
   b.sent=true;save();ui.tab='enviado';render(false);
@@ -685,20 +770,28 @@ document.addEventListener('click',function(e){
     case 'sheet':ui.sheet=!ui.sheet;updateBar();break;
     case 'pay':ui.pay=v;render();break;
     case 'pixsent':
-      b=mine();if(b){b.paid='enviado';b.pay='pix';b.sent=true;save()}
+      b=mine();if(b){b.paid='enviado';b.pay='pix';b.sent=true;save();if(DBON)DB.avisar(b.id,b.phone,'pix','enviado').catch(function(){fail()})}
       ui.tab='meu';toast('Pix avisado à barbearia');setTimeout(function(){render(false)},0);break;
     case 'paylater':
-      b=mine();if(b){b.pay='local';b.sent=true;save()}
+      b=mine();if(b){b.pay='local';b.sent=true;save();if(DBON)DB.avisar(b.id,b.phone,'local',b.paid||'').catch(function(){fail()})}
       ui.tab='meu';setTimeout(function(){render(false)},0);break;
     case 'date':ui.date=v;ui.slot=null;render();break;
     case 'slot':ui.slot=Number(v);render();break;
     case 'book':book();break;
     case 'lookup':
+      if(DBON){
+        DB.loadPublic(ui.lookup).then(function(d){
+          if(d.bookings.some(function(x){return !x.occ})){applyData(d);S.me=ui.lookup.trim();S.mine=null;ui.lookupMiss=false;save()}
+          else ui.lookupMiss=true;
+          render(false);
+        }).catch(function(e){toast(errMsg(e))});
+        break;
+      }
       if(S.bookings.some(function(x){return x.status!=='cancelado'&&digits(x.phone)===digits(ui.lookup)})){
         S.me=ui.lookup.trim();S.mine=null;ui.lookupMiss=false;save();
       }else ui.lookupMiss=true;
       render(false);break;
-    case 'logout':S.me=null;S.mine=null;ui.lookup='';ui.lookupMiss=false;ui.confirm=null;save();render(false);break;
+    case 'logout':if(DBON)S.bookings=S.bookings.filter(function(x){return x.occ});S.me=null;S.mine=null;ui.lookup='';ui.lookupMiss=false;ui.confirm=null;save();render(false);break;
     case 'pick':S.mine=v;ui.confirm=null;render(false);break;
     case 'go':
       ui.tab=v;ui.confirm=null;
@@ -707,28 +800,45 @@ document.addEventListener('click',function(e){
     case 'cancelask':ui.confirm='mine';render();break;
     case 'cancelno':ui.confirm=null;render();break;
     case 'cancelyes':
-      b=mine();if(b){b.status='cancelado';save()}
+      b=mine();if(b){b.status='cancelado';save();if(DBON)DB.cancelar(b.id,b.phone).then(function(){refresh({quiet:true})},function(e){fail(errMsg(e))})}
       ui.confirm=null;toast('Horário cancelado');setTimeout(render,0);break;
     case 'remarcar':
       b=mine();
-      if(b){b.status='cancelado';save();ui.svc=b.svc;ui.name=S.profile.name||ui.name;ui.phone=S.profile.phone||ui.phone}
+      if(b){b.status='cancelado';save();if(DBON)DB.cancelar(b.id,b.phone).catch(function(e){fail(errMsg(e))});ui.svc=b.svc;ui.name=S.profile.name||ui.name;ui.phone=S.profile.phone||ui.phone}
       ui.date=firstOpenFree();ui.slot=null;ui.step=2;ui.tab='agendar';toast('Escolha o novo horário');render(false);break;
     case 'ptab':ui.ptab=v;ui.confirm=null;render(false);break;
     case 'bpro':ui.bpro=v;ui.confirm=null;render();break;
     case 'bdate':ui.bdate=v;ui.confirm=null;render();break;
-    case 'confirm':b=byId(v);if(b){b.status='confirmado';save();toast('Horário confirmado')}setTimeout(render,0);break;
-    case 'baixa':b=byId(v);if(b){b.paid='pago';save();toast('Pagamento recebido')}render();break;
+    case 'confirm':b=byId(v);if(b){b.status='confirmado';save();toast('Horário confirmado');if(DBON)DB.setStatus(b.id,{status:'confirmado'}).catch(function(){fail()})}setTimeout(render,0);break;
+    case 'baixa':b=byId(v);if(b){b.paid='pago';save();toast('Pagamento recebido');if(DBON)DB.setStatus(b.id,{paid:'pago'}).catch(function(){fail()})}render();break;
     case 'bask':ui.confirm=v;render();break;
     case 'bno':ui.confirm=null;render();break;
-    case 'bcancel':b=byId(v);if(b){b.status='cancelado';save();toast('Horário liberado')}ui.confirm=null;render();break;
+    case 'bcancel':b=byId(v);if(b){b.status='cancelado';save();toast('Horário liberado');if(DBON)DB.setStatus(b.id,{status:'cancelado'}).catch(function(){fail()})}ui.confirm=null;render();break;
     case 'block':
-      (S.blocks[ui.bpro+'|'+ui.bdate]=S.blocks[ui.bpro+'|'+ui.bdate]||[]).push(Number(v));save();render();break;
+      (S.blocks[ui.bpro+'|'+ui.bdate]=S.blocks[ui.bpro+'|'+ui.bdate]||[]).push(Number(v));save();
+      if(DBON)DB.block(ui.bpro,ui.bdate,Number(v)).catch(function(){fail()});
+      render();break;
     case 'unblock':
-      S.blocks[ui.bpro+'|'+ui.bdate]=(S.blocks[ui.bpro+'|'+ui.bdate]||[]).filter(function(x){return x!==Number(v)});save();render();break;
+      S.blocks[ui.bpro+'|'+ui.bdate]=(S.blocks[ui.bpro+'|'+ui.bdate]||[]).filter(function(x){return x!==Number(v)});save();
+      if(DBON)DB.unblock(ui.bpro,ui.bdate,Number(v)).catch(function(){fail()});
+      render();break;
     case 'copy':copy(t.dataset.text);break;
     case 'lock':
       ui.unlocked=false;try{sessionStorage.removeItem(LOCKKEY)}catch(e){}
+      if(DBON){DB.logout();S.bookings=[];S.blocks={}}
       render(false);break;
+    case 'login':
+      if(ui.busy)break;
+      ui.busy=true;ui.loginErr='';render(false);
+      DB.login(ui.pass).then(function(){
+        ui.busy=false;ui.unlocked=true;ui.pass='';return refresh();
+      }).catch(function(er){
+        ui.busy=false;
+        ui.loginErr=er&&er.code==='login'?'Senha incorreta.':('Não deu para entrar. Confira a internet.');
+        render(false);
+      });
+      break;
+    case 'retry':ui.loadErr=false;render();refresh();break;
     case 'rask':ui.askReset=true;render();break;
     case 'rno':ui.askReset=false;render();break;
     case 'rdo':
@@ -750,15 +860,18 @@ document.addEventListener('input',function(e){
       toast('Bem-vindo');render(false);
     }else if(e.target.value.length>=String(CFG.senha).length){e.target.value='';toast('Senha incorreta')}
   }
-  else if(id==='set-zap'){S.zap=e.target.value;save()}
-  else if(id==='set-pix'){S.pix=e.target.value;S.pixEdited=true;save()}
+  else if(id==='adm-email'){ui.email=e.target.value}
+  else if(id==='adm-pass'){ui.pass=e.target.value}
+  else if(id==='set-zap'){S.zap=e.target.value;save();saveCfg()}
+  else if(id==='set-pix'){S.pix=e.target.value;S.pixEdited=true;save();saveCfg()}
   else if(id&&id.indexOf('set-price-')===0){
     var n=parseFloat(e.target.value);
-    S.prices[id.slice(10)]=isNaN(n)?0:Math.max(0,n);save();
+    S.prices[id.slice(10)]=isNaN(n)?0:Math.max(0,n);save();saveCfg();
   }
 });
 document.addEventListener('keydown',function(e){
   if(e.key==='Enter'&&e.target.id==='f-lookup'){var lb=document.querySelector('[data-act="lookup"]');if(lb&&!lb.disabled)lb.click()}
+  if(e.key==='Enter'&&(e.target.id==='adm-pass')){var lg=document.querySelector('[data-act="login"]');if(lg&&!lg.disabled)lg.click()}
 });
 document.addEventListener('toggle',function(e){if(e.target&&e.target.id==='cfg')ui.setOpen=e.target.open},true);
 
@@ -766,4 +879,17 @@ if(PAGE==='cliente'&&'serviceWorker' in navigator&&/^https?:$/.test(location.pro
   navigator.serviceWorker.register('sw.js').catch(function(){});
 }
 render(false);
+if(DBON){
+  if(PAGE==='painel'){
+    DB.session().then(function(v){ui.unlocked=v;ui.booting=false;if(v)refresh();else render(false)});
+  }else refresh();
+  /* mantém a tela em dia: a cada 30 segundos e quando a pessoa volta para o app */
+  var watch=function(){
+    if(document.hidden||ui.busy)return;
+    if(PAGE==='painel'){if(ui.unlocked)refresh({quiet:true})}
+    else if((ui.tab==='agendar'&&ui.step===2)||ui.tab==='meu')refresh({quiet:true});
+  };
+  setInterval(watch,30000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)watch()});
+}
 })();
